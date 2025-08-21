@@ -41,14 +41,6 @@ void loop() {
   } while(true); // forever
 
 
-  
-  MyMatrix.ClearScreen();
-  
-  MyMatrix.TestBarLR();
-  MyMatrix.TestBarRL();
-  
-  MyMatrix.ClearScreen();
-
   Sprite.BounceTest();
   
 }

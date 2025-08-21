@@ -39,6 +39,7 @@ public:
   bool CheckMatch(char * QueryString,double *mmm,double *nnn);
   bool CheckMatch(char * QueryString,long *mmm,long *nnn);
   bool CheckMatch(char * QueryString,long *mmm,long *nnn,long *ppp);
+  bool CheckMatch(char * QueryString,long *mmm,long *nnn,long *ppp,long *qqq);
   bool CheckMatch(char * QueryString,double *mmm,long *nnn,long *ppp);
   void SerialOut(char * x);
   void EchoNewString();
@@ -261,6 +262,45 @@ bool SerialIO::CheckMatch(char * QueryString,long *mmm,long *nnn,long *ppp){
 	//SerialPort.println(zz);
 	
 	return(match);
+      }
+    }	    
+  }
+  
+  return(false);
+}
+
+bool SerialIO::CheckMatch(char * QueryString,long *mmm,long *nnn,long *ppp,long *qqq){
+  char * ptrEnd;
+  int lenQuery;
+  int i,j,k;
+  bool match;
+  //  char zz[50];
+  lenQuery=strlen(QueryString);      // Length of query string (command characters)
+  i=CheckQueryComma(QueryString);    // first comma
+  j=CheckQueryComma(QueryString,2);  // second comma
+  k=CheckQueryComma(QueryString,3);  // third comma
+
+  //  sprintf(zz,"%s i=%d j=%d\n",NewString,i,j);
+  //  SerialPort.println(zz);
+  
+  if((i!=0)&(j!=0)){
+    *mmm=strtol(NewString+lenQuery,&ptrEnd,10);
+    if(ptrEnd==(NewString+i)){
+      *nnn=strtol(NewString+i+1,&ptrEnd,10);
+      if(ptrEnd==(NewString+j)){
+	*ppp=strtol(NewString+j+1,&ptrEnd,10);
+	if(ptrEnd==(NewString+k)){
+	  *qqq=strtol(NewString+k+1,&ptrEnd,10);
+	  match=(ptrEnd==(NewString+NewStringLength));
+	  if(match)EchoNewString();
+
+	  //float m=(*mmm);
+	  //int n=(*nnn),p=(*ppp);
+	  //sprintf(zz,"mmm=%f nnn=%d ppp=%d %d",m,n,p,match);
+	  //SerialPort.println(zz);
+	  
+	  return(match);
+	}
       }
     }	    
   }

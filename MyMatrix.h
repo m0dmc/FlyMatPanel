@@ -30,8 +30,14 @@
 #define PANEL_RES_X 64 // Number of pixels wide of each INDIVIDUAL panel module. 
 #define PANEL_RES_Y 32 // Number of pixels tall of each INDIVIDUAL panel module.
 
-//#define NUM_ROWS 3 // Number of rows of chained INDIVIDUAL PANELS (ROW >= 1 for virtual array)
-//#define NUM_COLS 1 // Number of INDIVIDUAL PANELS
+// Define outside class file ///////////////////////////////////
+#ifndef NUM_ROWS
+#define NUM_ROWS 3 // Number of rows of chained INDIVIDUAL PANELS (ROW >= 1 for virtual array)
+#endif
+
+#ifndef NUM_COLS
+#define NUM_COLS 1 // Number of INDIVIDUAL PANELS
+#endif
 
 #define PANEL_CHAIN NUM_ROWS*NUM_COLS    // total number of panels chained one to another
 
@@ -43,18 +49,55 @@ MatrixPanel_I2S_DMA *dma_display = nullptr;
 // placeholder for the virtual display object
 VirtualMatrixPanel  *virtualDisp = nullptr;
 
+enum DrawShape{Del,Line,LineM};
+
 class MyMatrix{
  private:
-  uint16_t myBLACK = dma_display->color565(0, 0, 0);
-  uint16_t myWHITE = dma_display->color565(255, 255, 255);
-  uint16_t myRED   = dma_display->color565(255, 0, 0);
-  uint16_t myGREEN = dma_display->color565(0, 255, 0);
-  uint16_t myBLUE  = dma_display->color565(0, 0, 255);
   uint16_t bg      = dma_display->color565(0, 0, 0);
   uint16_t fg      = dma_display->color565(255, 255, 255);
   int Brightness =192;
-  int VirtWidth;
-  int VirtHeight;
+  int VirtWidth;     // set during init dependent on number of panels
+  int VirtHeight;    // set during init dependent on number of panels
+#define DRAW_SIZE 20
+  // Del   - deletes oldest draw
+  // LineM - draws line with stacked memory 
+  // Line  - draws line without memory
+  // enum DrawShape{Del,Line,LineM};
+  struct LastDraw{
+    int Xpos;
+    int Ypos;
+    int Xarea;
+    int Yarea;
+    DrawShape Shape;
+  }LastDraw[DRAW_SIZE];
+  int NDraws;
+  void AppendDraw(DrawShape S,int Xp,int Yp,int Xa,int Ya){
+    if(NDraws<DRAW_SIZE-1){
+      LastDraw[NDraws].Xpos=Xp;
+      LastDraw[NDraws].Ypos=Yp;
+      LastDraw[NDraws].Xarea=Xa;
+      LastDraw[NDraws].Yarea=Ya;
+      LastDraw[NDraws].Shape=S;
+    }
+    NDraws++;
+  }
+  void DelDraw(){
+    if(NDraws!=0){
+      for(int i=0;i<NDraws;i++){
+	LastDraw[i].Xpos= LastDraw[i+1].Xpos;
+	LastDraw[i].Ypos= LastDraw[i+1].Ypos;
+	LastDraw[i].Xarea= LastDraw[i+1].Xarea;
+	LastDraw[i].Yarea= LastDraw[i+1].Yarea;
+	LastDraw[i].Shape= LastDraw[i+1].Shape;
+      }
+      NDraws--;
+    }
+  }
+  void ShowXY(int Xp,int Yp,int Xa,int Ya){
+    char zz[80];
+    sprintf(zz,"Xp=%03d Yp=%03d Xa=%03d Ya=%03d\r\n",Xp,Yp,Xa,Ya);
+    SerialIO.SerialOut(zz);
+  }
  public:
   void Init(){
     // Init matrix boards
@@ -80,12 +123,16 @@ class MyMatrix{
     // Set global width and height
     VirtWidth=virtualDisp->width();
     VirtHeight=virtualDisp->height();
-    
-    delay(500);
-    ClearScreen();// Uses default bg colour
-    delay(500);
+    for(int i=0;i<DRAW_SIZE;i++){
+      LastDraw[i].Xpos=0;
+      LastDraw[i].Ypos=0;
+      LastDraw[i].Xarea=0;
+      LastDraw[i].Yarea=0;
+      LastDraw[i].Shape=Del;
+    }
+    NDraws=0;
     DrawTestBorder();
-    delay(2000);
+    delay(1500);
     ClearScreen();
   }
   void SetBrightness(int b){
@@ -95,21 +142,22 @@ class MyMatrix{
   void SetBrightness(){
     SetBrightness(Brightness);
   }
+  int GetBrightness(){
+    return(Brightness);
+  }
   void ClearScreen(){
-    //virtualDisp->fillScreen(bg);
     virtualDisp->clearScreen();
   }
-  void DrawTestBorder(){
-    virtualDisp->drawRect(1,1, VirtWidth-2, VirtHeight-2, fg);
+  void ClearScreen(int bg){
+    virtualDisp->fillScreen(bg);
   }
-
   int VirtualWidth(){
     return(VirtWidth);
   }
   int VirtualHeight(){
     return(VirtHeight);
   }
-  void SetFGcol(int r,int g,int b){
+  void SetFGcol(int r,int g,int b){ // 0-255,0-255,0-255
     fg=dma_display->color565(r&0xff,g&0xff,b&0xff);
   }
   void SetFGcol(int c){
@@ -118,7 +166,7 @@ class MyMatrix{
   uint16_t GetFGcol(){
     return(fg);
   }
-  void SetBGcol(int r,int g,int b){
+  void SetBGcol(int r,int g,int b){ // 0-255,0-255,0-255
     bg=dma_display->color565(r&0xff,g&0xff,b&0xff);
   }
   void SetBGcol(int c){
@@ -127,23 +175,64 @@ class MyMatrix{
   uint16_t GetBGcol(){
     return(bg);
   }
+  
+  void DrawBG(DrawShape s,int Xp,int Yp,int Xa,int Ya){
+     SerialIO.SerialOut("DrawBG ");
+     ShowXY(Xp,Yp, Xa,Ya);
+    switch(s){
+    default:
+    case Del:
+      break;
+    case LineM:
+    case Line:
+      virtualDisp->drawLine(Xp,Yp,Xa,Ya, bg);
+      break;
+    }
+  }
+  void DrawFG(DrawShape s,int Xp,int Yp,int Xa,int Ya){
+     SerialIO.SerialOut("DrawFG ");
+      ShowXY(Xp,Yp, Xa,Ya);
+    switch(s){
+    default:
+    case Del:
+      break;
+    case LineM:
+    case Line:
+      virtualDisp->drawLine(Xp,Yp,Xa,Ya, fg);
+      break;
+    }
+  }
+  void Draw(DrawShape s,int Xp,int Yp,int Xa,int Ya){
+    switch(s){
+    default:
+    case Del:
+      if(NDraws>0){
+	DrawBG(LastDraw[0].Shape,
+	       LastDraw[0].Xpos,
+	       LastDraw[0].Ypos,
+	       LastDraw[0].Xarea,
+	       LastDraw[0].Yarea);
+	DelDraw();
+      }
+      break;
+    case LineM:
+      DrawFG(s,Xp,Yp,Xa,Ya);
+      AppendDraw(s,Xp,Yp,Xa,Ya);
+      break;
+    case Line:
+      DrawFG(s,Xp,Yp,Xa,Ya);
+      break;
+    }
+  }
 
+  void DrawTestBorder(){
+    virtualDisp->drawRect(1,1, VirtWidth-2, VirtHeight-2, fg);
+  }
   void DrawTheLine(int x,uint16_t col){
     virtualDisp->drawLine(0,x,VirtWidth-1,x, col);
   }
-  void TestBarLR(){
-    for (int i=0;i<VirtHeight;i++){
-      DrawTheLine(i,fg);
-      delay(100);
-      DrawTheLine(i,bg);
-    }
-  }
-  void TestBarRL(){
-    for (int i=VirtHeight-1;i>=0;i--){
-      DrawTheLine(i,fg);
-      delay(100);
-      DrawTheLine(i,bg);
-    }
+  void DrawTheLine(int x){
+    DrawTheLine(x,fg);
   }
   
   MyMatrix(){}
