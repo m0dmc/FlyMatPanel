@@ -17,10 +17,10 @@ class SerialIO SerialIO;
 #include "MyMatrix.h";
 class MyMatrix MyMatrix;
 
+#include "SpriteTest.h"
+
 #include "TermComm.h"
 class TermComm TermComm;
-
-#include "SpriteTest.h"
 
 void setup() {
   SerialIO.Init();
@@ -31,6 +31,8 @@ void setup() {
 
 void loop() {
   SerialIO.Version();
+  Sprite.BounceTest(1);
+  
   TermComm.ShowHelp();
   SerialIO.SerialOut(">"); // show prompt and wait for command
   do{
@@ -39,8 +41,5 @@ void loop() {
       SerialIO.SerialOut(">"); // show prompt and wait for command
     }
   } while(true); // forever
-
-
-  Sprite.BounceTest();
   
 }

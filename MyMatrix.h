@@ -25,18 +25,35 @@
 */
 // 1) Include key virtual display library
 #include <ESP32-VirtualMatrixPanel-I2S-DMA.h>
-
+#define OLD_PANEL
+#ifdef OLD_PANEL
+////////////////////////////////////////////////////////////////////////////
 // 2) Set configuration
 #define PANEL_RES_X 64 // Number of pixels wide of each INDIVIDUAL panel module. 
 #define PANEL_RES_Y 32 // Number of pixels tall of each INDIVIDUAL panel module.
 
-// Define outside class file ///////////////////////////////////
 #ifndef NUM_ROWS
 #define NUM_ROWS 3 // Number of rows of chained INDIVIDUAL PANELS (ROW >= 1 for virtual array)
 #endif
 
 #ifndef NUM_COLS
 #define NUM_COLS 1 // Number of INDIVIDUAL PANELS
+#endif
+////////////////////////////////////////////////////////////////////////////
+#else
+//New panel
+
+#define PANEL_RES_X 172 // Number of pixels wide of each INDIVIDUAL panel module. 
+#define PANEL_RES_Y 86 // Number of pixels tall of each INDIVIDUAL panel module.
+
+#ifndef NUM_ROWS
+#define NUM_ROWS 1 // Number of rows of chained INDIVIDUAL PANELS (ROW >= 1 for virtual array)
+#endif
+
+#ifndef NUM_COLS
+#define NUM_COLS 1 // Number of INDIVIDUAL PANELS
+#endif
+/////////////////////////////////////////////////////////////////////////////
 #endif
 
 #define PANEL_CHAIN NUM_ROWS*NUM_COLS    // total number of panels chained one to another
@@ -49,7 +66,7 @@ MatrixPanel_I2S_DMA *dma_display = nullptr;
 // placeholder for the virtual display object
 VirtualMatrixPanel  *virtualDisp = nullptr;
 
-enum DrawShape{Del,Line,LineM};
+enum DrawShape{Nul,Line,Rect,FillRect,Circle,FillCircle};
 
 class MyMatrix{
  private:
@@ -58,25 +75,24 @@ class MyMatrix{
   int Brightness =192;
   int VirtWidth;     // set during init dependent on number of panels
   int VirtHeight;    // set during init dependent on number of panels
-#define DRAW_SIZE 20
-  // Del   - deletes oldest draw
-  // LineM - draws line with stacked memory 
-  // Line  - draws line without memory
-  // enum DrawShape{Del,Line,LineM};
+#define DRAW_SIZE 10
   struct LastDraw{
     int Xpos;
     int Ypos;
     int Xarea;
     int Yarea;
+    int Colour;
     DrawShape Shape;
   }LastDraw[DRAW_SIZE];
   int NDraws;
-  void AppendDraw(DrawShape S,int Xp,int Yp,int Xa,int Ya){
+  int Mode=0;// 0=off, 1 remember drawn, 2 delete before next draw
+  void AppendDraw(DrawShape S,int Xp,int Yp,int Xa,int Ya,int Colour){
     if(NDraws<DRAW_SIZE-1){
       LastDraw[NDraws].Xpos=Xp;
       LastDraw[NDraws].Ypos=Yp;
       LastDraw[NDraws].Xarea=Xa;
       LastDraw[NDraws].Yarea=Ya;
+      LastDraw[NDraws].Colour=Colour;
       LastDraw[NDraws].Shape=S;
     }
     NDraws++;
@@ -84,11 +100,12 @@ class MyMatrix{
   void DelDraw(){
     if(NDraws!=0){
       for(int i=0;i<NDraws;i++){
-	LastDraw[i].Xpos= LastDraw[i+1].Xpos;
-	LastDraw[i].Ypos= LastDraw[i+1].Ypos;
-	LastDraw[i].Xarea= LastDraw[i+1].Xarea;
-	LastDraw[i].Yarea= LastDraw[i+1].Yarea;
-	LastDraw[i].Shape= LastDraw[i+1].Shape;
+	LastDraw[i].Xpos  = LastDraw[i+1].Xpos;
+	LastDraw[i].Ypos  = LastDraw[i+1].Ypos;
+	LastDraw[i].Xarea = LastDraw[i+1].Xarea;
+	LastDraw[i].Yarea = LastDraw[i+1].Yarea;
+	LastDraw[i].Colour= LastDraw[i+1].Colour;
+	LastDraw[i].Shape = LastDraw[i+1].Shape;
       }
       NDraws--;
     }
@@ -108,11 +125,17 @@ class MyMatrix{
 			   );
     
     dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-    SetBrightness();
+    //delay(500);
     
     // Allocate memory and start DMA display
-    if( not dma_display->begin() )SerialIO.SerialOut("I2S memory allocation failed");
-    
+    if( not dma_display->begin() )SerialIO.SerialOut("I2S memory dma_display allocation failed\r\n");
+#ifdef OLD_PANEL
+    SerialIO.SerialOut("OLD Panel\r\n");
+#else
+    SerialIO.SerialOut("Not OLD Panel\r\n");
+#endif
+    SetBrightness();
+  
     // create VirtualDisplay object based on our newly created dma_display object
     virtualDisp = new VirtualMatrixPanel((*dma_display),
 					 NUM_ROWS,
@@ -128,12 +151,19 @@ class MyMatrix{
       LastDraw[i].Ypos=0;
       LastDraw[i].Xarea=0;
       LastDraw[i].Yarea=0;
-      LastDraw[i].Shape=Del;
+      LastDraw[i].Colour=0;
+      LastDraw[i].Shape=Nul;
     }
     NDraws=0;
     DrawTestBorder();
     delay(1500);
     ClearScreen();
+  }
+  void SetMode(int x){
+    Mode=x;
+  }
+  int GetMode(){
+    return(Mode);
   }
   void SetBrightness(int b){
     Brightness=(b & 0xff);
@@ -147,9 +177,11 @@ class MyMatrix{
   }
   void ClearScreen(){
     virtualDisp->clearScreen();
+    NDraws=0;
   }
   void ClearScreen(int bg){
     virtualDisp->fillScreen(bg);
+    NDraws=0;
   }
   int VirtualWidth(){
     return(VirtWidth);
@@ -175,64 +207,56 @@ class MyMatrix{
   uint16_t GetBGcol(){
     return(bg);
   }
-  
-  void DrawBG(DrawShape s,int Xp,int Yp,int Xa,int Ya){
-     SerialIO.SerialOut("DrawBG ");
-     ShowXY(Xp,Yp, Xa,Ya);
+
+  void DrawNow(DrawShape s,int Xp,int Yp,int Xa,int Ya,int col){
+    SerialIO.SerialOut("DrawShape ");
+    ShowXY(Xp,Yp,Xa,Ya);
     switch(s){
     default:
-    case Del:
       break;
-    case LineM:
-    case Line:
-      virtualDisp->drawLine(Xp,Yp,Xa,Ya, bg);
-      break;
-    }
-  }
-  void DrawFG(DrawShape s,int Xp,int Yp,int Xa,int Ya){
-     SerialIO.SerialOut("DrawFG ");
-      ShowXY(Xp,Yp, Xa,Ya);
-    switch(s){
-    default:
-    case Del:
-      break;
-    case LineM:
-    case Line:
-      virtualDisp->drawLine(Xp,Yp,Xa,Ya, fg);
-      break;
-    }
-  }
-  void Draw(DrawShape s,int Xp,int Yp,int Xa,int Ya){
-    switch(s){
-    default:
-    case Del:
-      if(NDraws>0){
-	DrawBG(LastDraw[0].Shape,
-	       LastDraw[0].Xpos,
-	       LastDraw[0].Ypos,
-	       LastDraw[0].Xarea,
-	       LastDraw[0].Yarea);
-	DelDraw();
-      }
-      break;
-    case LineM:
-      DrawFG(s,Xp,Yp,Xa,Ya);
-      AppendDraw(s,Xp,Yp,Xa,Ya);
+    case Circle:
+      virtualDisp->drawCircle(Xp,Yp,Xa, col);
       break;
     case Line:
-      DrawFG(s,Xp,Yp,Xa,Ya);
+      virtualDisp->drawLine(Xp,Yp,Xa,Ya, col);
+      break;
+    case Rect:
+      virtualDisp->drawRect(Xp,Yp,Xa,Ya, col);
+      break;
+    case FillRect:
+      virtualDisp->fillRect(Xp,Yp,Xa,Ya, col);
+      break;
+    case FillCircle: //Ya ignored (Xa=diameter)
+      virtualDisp->fillCircle(Xp,Yp,Xa, col);
       break;
     }
   }
 
+  void Draw(DrawShape s,int Xp,int Yp,int Xa,int Ya,int col){
+    if((Mode==2)|(Mode==3)){
+      if(NDraws>0){
+	SerialIO.SerialOut("ClearShape ");
+	ShowXY(LastDraw[0].Xpos,
+	       LastDraw[0].Ypos,
+	       LastDraw[0].Xarea,
+	       LastDraw[0].Yarea);
+	DrawNow(LastDraw[0].Shape,
+	     LastDraw[0].Xpos,
+	     LastDraw[0].Ypos,
+	     LastDraw[0].Xarea,
+	     LastDraw[0].Yarea,
+	     bg);
+	DelDraw();
+      }
+    }
+    if((Mode==1)|(Mode==3)){
+      AppendDraw(s,Xp,Yp,Xa,Ya,col);
+    }
+    DrawNow(s,Xp,Yp,Xa,Ya,col);
+  }
+
   void DrawTestBorder(){
-    virtualDisp->drawRect(1,1, VirtWidth-2, VirtHeight-2, fg);
-  }
-  void DrawTheLine(int x,uint16_t col){
-    virtualDisp->drawLine(0,x,VirtWidth-1,x, col);
-  }
-  void DrawTheLine(int x){
-    DrawTheLine(x,fg);
+    DrawNow(Rect,0,0, VirtWidth, VirtHeight, fg);
   }
   
   MyMatrix(){}

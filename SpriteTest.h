@@ -50,19 +50,21 @@ class SpriteControl{
     return((Ypos<SPRITE_YMAX?Ypos:2*SPRITE_YMAX-Ypos));
   }
 
-  void BounceTest(){
+  void BounceTest(bool DelDraw){
+    int bg=MyMatrix.GetBGcol();
+    int fg=MyMatrix.GetFGcol();
     int xp,yp,i=0;
     bool HitWall=false;
     do{
       HitWall=IncCount(Xstep,Ystep);
       xp=GetXpos();
       yp=GetYpos();
-      virtualDisp->fillCircle(xp+1,yp+1,2, MyMatrix.GetFGcol());
-      delay(30);
-      virtualDisp->fillCircle(xp+1,yp+1,2, MyMatrix.GetBGcol());
+      MyMatrix.Draw(FillCircle,xp+1,yp+1,2,0,fg);
+      delay(50);
+      if(DelDraw) MyMatrix.Draw(FillCircle,xp+1,yp+1,2,0,bg);
       if(HitWall)SetStep();
       LEDext.Toggle();
-    }while(i++<100);
+    }while(i++<500);
     
 
   }
